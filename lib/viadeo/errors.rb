@@ -1,10 +1,12 @@
 module Viadeo
   module Errors
     class ViadeoError < StandardError
-      attr_reader :data
-      def initialize(data)
+      attr_reader :data, :status, :headers
+      def initialize(status = 500, headers = nil, data = nil)
         @data = data
-        super
+        @headers = headers
+        @status = status
+        super()
       end
     end
 
@@ -12,8 +14,8 @@ module Viadeo
     class UnauthorizedError      < ViadeoError; end
     class GeneralError           < ViadeoError; end
 
-    class UnavailableError       < StandardError; end
-    class InformViadeoError    < StandardError; end
-    class NotFoundError          < StandardError; end
+    class UnavailableError       < ViadeoError; end
+    class InformViadeoError      < ViadeoError; end
+    class NotFoundError          < ViadeoError; end
   end
 end

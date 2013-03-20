@@ -14,40 +14,21 @@ module Viadeo
       def simple_query(access_token, path, args)
         puts "simple_query(#{access_token}, #{path}, #{args})"
 
-        url = "#{DEFAULT_OAUTH_OPTIONS[:api_base]}#{path}?access_token=#{access_token}"
-        args.each {|key, value| url += "&#{key}=#{CGI.escape(value.to_s)}"}
-        uri = URI.parse(url)
-        resp = nil
-        connection = Net::HTTP.new(uri.host, 443)
-        connection.use_ssl = true
-        connection.verify_mode = OpenSSL::SSL::VERIFY_NONE
-        resp = connection.request_get(uri.path + '?' + uri.query)
+        response = get path, {access_token: access_token}.merge(args)
 
         puts "Viadeo :: resp=#{resp.inspect}"
 
-        return Mash.from_json resp.body
+        resp.body
       end
 
       def simple_post_query(access_token, path, args, post_data = "")
         puts "simple_post_query(#{access_token}, #{path}, #{args})"
 
-        url = "#{DEFAULT_OAUTH_OPTIONS[:api_base]}#{path}?access_token=#{access_token}"
-        args.each {|key, value| url += "&#{key}=#{CGI.escape(value.to_s)}"}
-        uri = URI.parse(url)
-        resp = nil
-        connection = Net::HTTP.new(uri.host, 443)
-        connection.use_ssl = true
-        connection.verify_mode = OpenSSL::SSL::VERIFY_NONE
-
-        if !post_data.respond_to?(:bytesize) && post_data.respond_to?(:map)
-          post_data = post_data.map { |k, v| "#{CGI.escape(k.to_s)}=#{CGI.escape(v.to_s)}" }.join('&')
-        end
-
-        resp = connection.request_post(uri.path + '?' + uri.query, post_data)
+        response = post path, {access_token: access_token}.merge(args), post_data
 
         puts "Viadeo :: resp=#{resp.inspect}"
 
-        return Mash.from_json resp.body
+        resp.body
       end
 
     end

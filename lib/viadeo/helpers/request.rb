@@ -1,88 +1,157 @@
+require 'active_support/concern'
+require 'active_support/notifications'
+require 'active_support/core_ext/class/attribute'
+require 'curb'
+
 module Viadeo
   module Helpers
     module Request
+      extend ActiveSupport::Concern
 
-      DEFAULT_HEADERS = {
-        'x-li-format' => 'json'
-      }
+      included do
+        class_attribute :base_url
+        self.base_url = 'https://api.viadeo.com/'
+      end
 
-      API_PATH = '/v1'
-
-      protected
-
-        def get(path, options={})
-        	ActiveRecord::Base.logger.debug "Viadeo::GET #{API_PATH}#{path}"
-        	start = Time.now
-          response = access_token.get("#{API_PATH}#{path}", DEFAULT_HEADERS.merge(options))
-          ActiveRecord::Base.logger.debug "Done in #{((Time.now-start) * 100).to_i}ms"
-          raise_errors(response)
-          response.body
+      def get(path, query = {}, options={})
+        ActiveSupport::Notifications.instrument('viadeo.request', extra: {path: path, query: query, method: :get}) do
+          request :get, path, query, nil, options
         end
+      end
 
-        def post(path, body='', options={})
-        	ActiveRecord::Base.logger.debug "Viadeo::POST #{API_PATH}#{path}"
-        	start = Time.now
-          response = access_token.post("#{API_PATH}#{path}", body, DEFAULT_HEADERS.merge(options))
-          ActiveRecord::Base.logger.debug "Done in #{((Time.now-start) * 100).to_i}ms"
-          raise_errors(response)
-          response
-        end
-
-        def put(path, body, options={})
-        	ActiveRecord::Base.logger.debug "Viadeo::PUT #{API_PATH}#{path}"
-        	start = Time.now
-          response = access_token.put("#{API_PATH}#{path}", body, DEFAULT_HEADERS.merge(options))
-          ActiveRecord::Base.logger.debug "Done in #{((Time.now-start) * 100).to_i}ms"
-          raise_errors(response)
-          response
-        end
-
-        def delete(path, options={})
-        	ActiveRecord::Base.logger.debug "Viadeo::DELETE #{API_PATH}#{path}"
-        	start = Time.now
-          response = access_token.delete("#{API_PATH}#{path}", DEFAULT_HEADERS.merge(options))
-          ActiveRecord::Base.logger.debug "Done in #{((Time.now-start) * 100).to_i}ms"
-          raise_errors(response)
-          response
-        end
-
-      private
-
-        def raise_errors(response)
-          # Even if the json answer contains the HTTP status code, Viadeo also sets this code
-          # in the HTTP answer (thankfully).
-          case response.code.to_i
-          when 401
-            data = Mash.from_json(response.body)
-            raise Viadeo::Errors::UnauthorizedError.new(data), "(#{data.status}): #{data.message}"
-          when 400, 403
-            data = Mash.from_json(response.body)
-            raise Viadeo::Errors::GeneralError.new(data), "(#{data.status}): #{data.message}"
-          when 404
-            raise Viadeo::Errors::NotFoundError, "(#{response.code}): #{response.message}"
-          when 500
-            raise Viadeo::Errors::InformViadeoError, "Viadeo had an internal error. Please let them know in the forum. (#{response.code}): #{response.message}"
-          when 502..503
-            raise Viadeo::Errors::UnavailableError, "(#{response.code}): #{response.message}"
+      %w{post put delete}.each do |method|
+        class_eval <<-RUBY, __FILE__, __LINE__+1
+          def #{method}(path, query = {}, data = nil, options={})
+            ActiveSupport::Notifications.instrument('viadeo.request', extra: {path: path, query: query, method: :#{method}, data: data}) do
+              request :#{method}, path, query, data, options
+            end
           end
+        RUBY
+      end
+
+    private
+
+      def curl
+        @curl ||= Curl::Multi.new.tap do |curl|
+          curl.pipeline = true
+        end
+      end
+
+      def request(method, path, query, data, options)
+        c = Curl::Easy.new(to_uri(base_url, path, query))
+        c.ssl_version = Curl::CURL_SSLVERSION_TLSv1
+        c.ssl_verify_peer = Rails.env.production? if defined? Rails
+        c.encoding = ''
+        c.verbose = true
+
+        error = nil
+        c.on_failure { |easy, code| error = parse_errors(easy) }
+        c.on_missing { |easy, code| error = parse_errors(easy) }
+
+        if !data.respond_to?(:bytesize) && data.respond_to?(:map)
+          data = to_query(data)
         end
 
-        def to_query(options)
-          options.inject([]) do |collection, opt|
-            collection << "#{opt[0]}=#{opt[1]}"
-            collection
-          end * '&'
+        case method
+        when :get
+          # nothing :-)
+        when :post
+          c.post_body = data
+        when :put
+          c.put_data = data
+        when :delete
+          c.post_body = data if data
+          c.delete = true
         end
 
-        def to_uri(path, options)
-          uri = URI.parse(path)
-
-          if options && options != {}
-            uri.query = to_query(options)
-          end
-          uri.to_s
+        if defined? VCR
+          # VCR doesn't support Curl::Multi
+          c.perform
+        else
+          # reusing the connection if possible
+          curl.add(c)
+          curl.perform
         end
-      
+
+        raise error if error
+
+        parse_response c
+      end
+
+      def parse_response(response)
+        headers = parse_headers(response.header_str)
+        if json_response?(headers)
+          body = Mash.from_json(response.body_str)
+        else
+          body = response.body_str
+        end
+
+        ResponseWrapper.new(response.response_code, headers, body)
+      end
+
+      def parse_errors(response)
+        parsed_response = parse_response(response)
+        klass = case parsed_response.status
+        when 401
+          Viadeo::Errors::UnauthorizedError
+        when 400, 403
+          Viadeo::Errors::GeneralError
+        when 404
+          Viadeo::Errors::NotFoundError
+        when 500
+          Viadeo::Errors::InformViadeoError
+        when 502..503
+          Viadeo::Errors::UnavailableError
+        else
+          Viadeo::Errors::GenericError
+        end
+
+        klass.new(parsed_response.status, parsed_response.headers, parsed_response.body)
+      rescue Exception => e
+        puts "#{e.class}: #{e.message}"
+        puts e.backtrace
+        raise e
+      end
+
+      def to_query(options)
+        options.map { |k, v| "#{CGI.escape k.to_s}=#{CGI.escape v.to_s}" }.join('&')
+      end
+
+      def to_uri(base_url, path, options)
+        uri = URI.parse(File.join(base_url, path))
+
+        if options && options != {}
+          uri.query = to_query(options)
+        end
+        uri.to_s
+      end
+
+      def parse_headers(str)
+        headers = str.split(/\r?\n/)
+        status_line = headers.shift
+        if status_line =~ %r{^HTTP/\d\.\d 1\d{2}} # 100
+          headers.shift # empty line
+          status_line = headers.shift
+        end
+        hash = Headers.new(headers.map { |h| h.split(/:\s*/, 2) })
+        hash['Status'] = $1.to_i if status_line =~ %r{^HTTP/\d\.\d (\d{3})}
+        hash
+      end
+
+      def json_response?(headers)
+        ct = headers['Content-Type']
+        ct =~ %r{^application/json(?:;|$)}
+      end
+
+      class Headers
+        include Net::HTTPHeader
+
+        def initialize(headers)
+          initialize_http_header(headers)
+        end
+      end
+
+      ResponseWrapper = Struct.new(:status, :headers, :body)
     end
   end
 end

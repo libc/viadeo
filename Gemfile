@@ -5,3 +5,5 @@ platforms :jruby do
 end
 
 gemspec
+
+gem 'sinatra'
