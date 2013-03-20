@@ -9,7 +9,7 @@ class DummyStubServer < Sinatra::Base
       end
 
       content_type :json
-      {method: verb, url: request.fullpath, params: params}.to_json
+      {method: verb, url: request.fullpath, params: params, content_type: request.content_type}.to_json
     end
   end
 

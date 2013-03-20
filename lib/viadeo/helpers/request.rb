@@ -50,6 +50,7 @@ module Viadeo
 
         if !data.respond_to?(:bytesize) && data.respond_to?(:map)
           data = to_query(data)
+          c.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
         end
 
         case method

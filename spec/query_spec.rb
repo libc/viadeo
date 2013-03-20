@@ -29,5 +29,11 @@ describe Viadeo::Client do
       expect(obj.body.params.param1).to eq('test')
       expect(obj.body.params.param2).to eq('body test')
     end
+
+    it 'supports unicode' do
+      obj = client.post('/test', {param1: 'test'}, {param2: [116, 233, 115, 116].pack("U*")})
+      expect(obj.body.params.param2).to eq([116, 233, 115, 116].pack("U*"))
+      expect(obj.body.content_type).to eq('application/x-www-form-urlencoded; charset=UTF-8')
+    end
   end
 end
