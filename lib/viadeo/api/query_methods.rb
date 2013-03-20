@@ -14,7 +14,7 @@ module Viadeo
       def simple_query(access_token, path, args)
         puts "simple_query(#{access_token}, #{path}, #{args})"
 
-        response = get path, {access_token: access_token}.merge(args)
+        resp = get path, {access_token: access_token}.merge(args)
 
         puts "Viadeo :: resp=#{resp.inspect}"
 
@@ -24,7 +24,7 @@ module Viadeo
       def simple_post_query(access_token, path, args, post_data = "")
         puts "simple_post_query(#{access_token}, #{path}, #{args})"
 
-        response = post path, {access_token: access_token}.merge(args), post_data
+        resp = post path, {access_token: access_token}.merge(args), post_data
 
         puts "Viadeo :: resp=#{resp.inspect}"
 
