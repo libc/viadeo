@@ -12,8 +12,12 @@ describe Viadeo::Client do
       expect(obj).to respond_to(:body)
     end
 
-    it 'raises error if error actuall happens' do
+    it 'raises exception if an error actually happens' do
       expect { client.get('/_raise_http_404') }.to raise_error(Viadeo::Errors::NotFoundError)
+    end
+
+    it 'raises ConflictError if 409 has occured' do
+      expect { client.get('/_raise_http_409') }.to raise_error(Viadeo::Errors::ConflictError)
     end
 
     it 'sends queries' do

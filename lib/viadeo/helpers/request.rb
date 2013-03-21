@@ -74,7 +74,7 @@ module Viadeo
           curl.perform
         end
 
-        raise error if error
+        raise error, "An error, has occured: #{error.inspect}" if error
 
         parse_response c
       end
@@ -99,6 +99,8 @@ module Viadeo
           Viadeo::Errors::GeneralError
         when 404
           Viadeo::Errors::NotFoundError
+        when 409
+          Viadeo::Errors::ConflictError
         when 500
           Viadeo::Errors::InformViadeoError
         when 502..503

@@ -17,5 +17,6 @@ module Viadeo
     class UnavailableError       < ViadeoError; end
     class InformViadeoError      < ViadeoError; end
     class NotFoundError          < ViadeoError; end
+    class ConflictError          < ViadeoError; end
   end
 end
