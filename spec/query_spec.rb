@@ -20,6 +20,17 @@ describe Viadeo::Client do
       expect { client.get('/_raise_http_409') }.to raise_error(Viadeo::Errors::ConflictError)
     end
 
+    it 'includes body and error code in the error message' do
+      e = nil # hoist the error
+      begin
+        client.get '/_raise_http_404', unique_param: 'very unique param'
+      rescue Viadeo::Errors::NotFoundError => e
+      end
+
+      expect(e.message).to include('404')
+      expect(e.message).to include('very unique param')
+    end
+
     it 'sends queries' do
       obj = client.get('/test', param1: 'test')
       expect(obj.body.params.param1).to eq('test')

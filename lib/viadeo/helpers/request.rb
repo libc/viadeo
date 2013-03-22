@@ -74,7 +74,7 @@ module Viadeo
           curl.perform
         end
 
-        raise error, "An error, has occured: #{error.inspect}" if error
+        raise error, "An error, has occured: http code: #{error.status}, response body: #{error.data.inspect}" if error
 
         parse_response c
       end
