@@ -36,6 +36,10 @@ describe Viadeo::Client do
       expect(obj.body.params.param1).to eq('test')
     end
 
+    it 'raises generic error when unknown error code occurs' do
+      expect { client.get '/_raise_http_418' }.to raise_error(Viadeo::Errors::GeneralError)
+    end
+
   end
 
   describe '#post' do

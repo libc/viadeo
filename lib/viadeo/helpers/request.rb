@@ -106,7 +106,7 @@ module Viadeo
         when 502..503
           Viadeo::Errors::UnavailableError
         else
-          Viadeo::Errors::GenericError
+          Viadeo::Errors::GeneralError
         end
 
         klass.new(parsed_response.status, parsed_response.headers, parsed_response.body)
